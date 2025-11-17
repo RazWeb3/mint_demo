@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Dart analyze (repo)
+        run: dart analyze .
+
+      - name: Test SDK package
+        working-directory: packages/xrplutter_sdk
+        run: |
+          flutter pub get
+          dart test
+
+      - name: Test demo app (analyze only)
+        working-directory: apps/wallet_connector_demo
+        run: |
+          flutter pub get
+          dart analyze .
+
+      - name: Test proxy template (node)
+        working-directory: templates/byos_proxy_minimal_vercel
+        run: |
+          npm ci
+          npm test

@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/**/*.js": {
+      "memory": 128,
+      "maxDuration": 10
+    }
+  },
+  "regions": ["hnd1"],
+  "outputDirectory": "sbt_mint/build/web",
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "^(?!/api/)(?!.*\\..+$).*$", "dest": "/index.html" }
+  ]
+}

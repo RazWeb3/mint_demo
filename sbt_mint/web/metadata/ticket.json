@@ -1,0 +1,9 @@
+{
+  "name": "Ticket",
+  "description": "Demo ticket SBT minted for SDK validation.",
+  "image": "/images/ticket.png",
+  "attributes": [
+    { "trait_type": "category", "value": "sbt" },
+    { "trait_type": "series", "value": "demo" }
+  ]
+}

@@ -1,0 +1,17 @@
+# 目的・役割: XRPLutter SDKのDartパッケージ定義ファイル。依存関係やメタ情報を管理する。
+# 作成日: 2025/11/08
+
+name: xrplutter_sdk
+description: Flutter/Dart SDK for XRPL NFT operations (mint, transfer, burn) with external wallet signing.
+version: 0.1.1
+publish_to: none
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  http: ^1.2.0
+
+dev_dependencies:
+  test: ^1.24.0
+  lints: ^3.0.0

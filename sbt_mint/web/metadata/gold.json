@@ -1,0 +1,9 @@
+{
+  "name": "Gold Ticket",
+  "description": "Demo gold ticket minted after burning two SBTs.",
+  "image": "/images/gold_ticket.png",
+  "attributes": [
+    { "trait_type": "category", "value": "ticket" },
+    { "trait_type": "rarity", "value": "gold" }
+  ]
+}

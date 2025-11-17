@@ -1,0 +1,20 @@
+{
+  "_purpose": "BYOS最小プロキシの依存関係とスクリプトを定義するパッケージ設定",
+  "_createdAt": "2025-11-10",
+  "name": "byos-proxy-minimal-vercel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Vercel functions build is managed by the platform'",
+    "start": "vercel dev",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1",
+    "@upstash/redis": "^1.24.4"
+  }
+}
