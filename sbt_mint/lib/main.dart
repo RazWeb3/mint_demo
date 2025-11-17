@@ -57,7 +57,7 @@ class _HomeState extends State<Home> {
   @override
   void initState() {
     super.initState();
-    final proxy = Uri.parse('${_baseUrl}/api/xrpl/v1/jsonrpc').toString();
+    final proxy = Uri.parse('$_baseUrl/api/xrpl/v1/jsonrpc').toString();
     xrpl = NftService(client: XRPLClient(endpoint: proxy));
   }
 
