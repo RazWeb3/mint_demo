@@ -15,6 +15,18 @@
 // 理由: 送付先アドレス不要でその場の相手へ渡せるようにする
 // 2025/11/18 12:00 送付待ち状態の表示とボタン無効化を追加
 // 理由: オファー作成済みNFTの重複送付を防ぎ、状態を明示
+// 2025/11/18 15:20 バーン連鎖の安定化: 署名後のポーリング停止条件をtxHash取得まで延長し、拒否時の状態リセットを追加。
+// 理由: 1枚目バーン後にポーリングを早期停止するとtxHash未取得のままとなり、次のバーン開始タイミングと競合するため。
+// 2025/11/18 15:20 連続バーン時の同期強化: _runAndWaitでtx検証(awaitTransaction)を待機してから次処理へ進むよう変更。
+// 理由: 連続トランザクションでシーケンスや検証待ちの競合を減らし、2枚目のバーンが確実に実行されるようにする。
+// 2025/11/18 15:20 NFTokenBurnにOwnerフィールドを付与（自ウォレット所有で明示）。
+// 理由: 発行者/所有者の差異やXamanオートフィル差異による不一致を避け、バーン対象所有者を明示するため。
+// 2025/11/18 15:45 合成の手動再表示ボタンを追加（2枚目バーン/ゴールドミント）
+// 理由: 2枚目バーン用QRが自動表示されないケースへのフォールバック操作を提供
+// 2025/11/18 16:00 ゴールドミントボタンの条件付与（2枚バーン達成時のみ可）
+// 理由: 合成未達でもミントできてしまう挙動を防ぎ、要件に合致させるため
+// 2025/11/18 16:10 送付のギフトQR機能を廃止
+// 理由: アドレス入力送付に一本化する運用に変更するため
 // -------------------------------------------------------
 import 'dart:async';
 import 'dart:convert';
@@ -124,6 +136,7 @@ class _HomeState extends State<Home> {
     final id = _currentPayloadId;
     if (id == null) return;
     int attempts = 0;
+    int hashAttempts = 0;
     _poller = Timer.periodic(const Duration(seconds: 2), (t) async {
       try {
         final uri = Uri.parse('$_baseUrl/api/xumm/v1/payload/status/$id');
@@ -137,12 +150,21 @@ class _HomeState extends State<Home> {
           });
         }
         if (j['signed'] == true) {
+          final txhPolled = j['txHash']?.toString();
           setState(() {
             _currentSigned = true;
-            _currentTxHash = j['txHash']?.toString();
+            _currentTxHash = txhPolled;
             _currentQrUrl = null;
             _currentDeepLink = null;
           });
+          // txHashが未取得の場合は一定回数までポーリング継続
+          if (txhPolled == null || txhPolled.isEmpty) {
+            if (hashAttempts < 10) {
+              hashAttempts++;
+              return; // 次回ポーリングへ（停止しない）
+            }
+          }
+          // account未取得時も一定回数までは継続
           final hasAccount = (_account != null && _account!.isNotEmpty);
           if (!hasAccount && attempts < 8) {
             attempts++;
@@ -165,6 +187,8 @@ class _HomeState extends State<Home> {
             _currentQrUrl = null;
             _currentPayloadId = null;
             _currentDeepLink = null;
+            _currentSigned = false;
+            _currentTxHash = null;
           });
         }
       } catch (_) {}
@@ -222,6 +246,20 @@ class _HomeState extends State<Home> {
       bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
     }
     return utf8.decode(bytes);
+  }
+
+  bool _selectedBothBurned() {
+    if (_selectedSbtIds.length != 2) return false;
+    final ids = _sbt.map((e) => e['NFTokenID']?.toString()).toSet();
+    return !ids.contains(_selectedSbtIds[0]) &&
+        !ids.contains(_selectedSbtIds[1]);
+  }
+
+  bool _firstOfSelectedBurned() {
+    if (_selectedSbtIds.length != 2) return false;
+    final ids = _sbt.map((e) => e['NFTokenID']?.toString()).toSet();
+    return !ids.contains(_selectedSbtIds[0]) &&
+        ids.contains(_selectedSbtIds[1]);
   }
 
   Future<void> _prefetchImages(List<Map<String, dynamic>> items) async {
@@ -316,6 +354,15 @@ class _HomeState extends State<Home> {
           if (_currentTxHash != null && _currentTxHash!.isNotEmpty) break;
           await Future.delayed(const Duration(seconds: 1));
         }
+        // 可能なら検証完了まで待機し、次のトランザクションとの競合を防ぐ
+        final txh = _currentTxHash;
+        if (txh != null && txh.isNotEmpty) {
+          try {
+            await XRPLClient(
+              endpoint: Uri.parse('$_baseUrl/api/xrpl/v1/jsonrpc').toString(),
+            ).awaitTransaction(txh, timeout: const Duration(seconds: 20));
+          } catch (_) {}
+        }
         await _refreshNftsWithRetry();
         return true;
       }
@@ -331,6 +378,7 @@ class _HomeState extends State<Home> {
     final ok1 = await _runAndWait({
       'TransactionType': 'NFTokenBurn',
       'NFTokenID': a,
+      'Owner': _account,
       'Fee': '10',
     });
     if (!ok1) {
@@ -340,6 +388,7 @@ class _HomeState extends State<Home> {
     final ok2 = await _runAndWait({
       'TransactionType': 'NFTokenBurn',
       'NFTokenID': b,
+      'Owner': _account,
       'Fee': '10',
     });
     if (!ok2) {
@@ -432,6 +481,35 @@ class _HomeState extends State<Home> {
     );
     accept.remove('Account');
     await _createPayload(accept);
+  }
+
+  Future<void> _onShowSecondBurnSelected() async {
+    if (_selectedSbtIds.length != 2) {
+      _showError('2枚選択してください');
+      return;
+    }
+    final b = _selectedSbtIds[1];
+    await _createPayload({
+      'TransactionType': 'NFTokenBurn',
+      'NFTokenID': b,
+      'Fee': '10',
+    });
+  }
+
+  Future<void> _onShowGoldMint() async {
+    if (!_selectedBothBurned()) {
+      _showError('2枚バーン達成後にミントできます');
+      return;
+    }
+    final uri = '$_baseUrl/metadata/gold.json';
+    final tx = xrpl.buildMintTxJson(
+      accountAddress: 'r',
+      metadataUri: uri,
+      taxon: 0,
+      transferable: true,
+    );
+    tx.remove('Account');
+    await _createPayload(tx);
   }
 
   @override
@@ -553,7 +631,26 @@ class _HomeState extends State<Home> {
                     ),
                     const SizedBox(width: 12),
                     Text('選択: ${_selectedSbtIds.length}/2'),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: (_account != null && _firstOfSelectedBurned())
+                          ? _onShowSecondBurnSelected
+                          : null,
+                      child: const Text('2枚目バーンQRを表示'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: (_account != null && _selectedBothBurned())
+                          ? _onShowGoldMint
+                          : null,
+                      child: const Text('ゴールドミントQRを表示'),
+                    ),
                   ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '注意: 自働化は未実装のため、各ステップ後は「NFT再読み込み」を押してください。',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
                 ),
                 const Divider(height: 32),
                 const Text(
@@ -572,7 +669,6 @@ class _HomeState extends State<Home> {
                           pending:
                               _pendingById[e['NFTokenID'].toString()] == true,
                           onSend: _onSendGold,
-                          onGift: _onGiftQr,
                         ),
                       )
                       .toList(),
@@ -662,14 +758,12 @@ class _SendTile extends StatefulWidget {
     this.imageUrl,
     this.pending = false,
     required this.onSend,
-    this.onGift,
   });
   final String nftId;
   final String? imageUrl;
   final bool pending;
   final Future<void> Function({required String nftId, required String dest})
   onSend;
-  final Future<void> Function({required String nftId})? onGift;
   @override
   State<_SendTile> createState() => _SendTileState();
 }
@@ -714,13 +808,6 @@ class _SendTileState extends State<_SendTile> {
             child: const Text('送付'),
           ),
           const SizedBox(width: 8),
-          if (widget.onGift != null)
-            OutlinedButton(
-              onPressed: widget.pending
-                  ? null
-                  : () => widget.onGift!(nftId: widget.nftId),
-              child: const Text('ギフトQR'),
-            ),
           if (widget.pending)
             Padding(
               padding: const EdgeInsets.only(left: 8),
