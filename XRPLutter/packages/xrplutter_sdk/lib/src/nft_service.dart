@@ -15,6 +15,8 @@
 // 理由: XLS-20互換性と相互運用性の向上（文字列エンコードの標準化）。
 // 2025/11/16 13:05 変更: 発行者バーン対応のため、buildBurnTxJson/burn/_buildBurnTxJsonにownerAddressオプションを追加（NFTokenBurn.Owner）。
 // 理由: tfBurnable設定済みNFTに対する発行者/認可ミンターのバーン機能をSDKビルダーで扱えるようにするため。
+// 2025/11/18 10:20 修正: NFTokenCreateOfferにtfSellNFTokenフラグを付与
+// 理由: ギフト送付（Amount=0, Destination指定）で買いオファー扱いになる不具合を解消し、売りオファー（送付）として正しく作成するため。
 // -------------------------------------------------------
 
 import 'dart:convert';
@@ -36,6 +38,8 @@ class NftService {
   static const int _tfMutable = 0x00000010;
   // NFTokenオブジェクト Flags（推定値、要検証）
   static const int _lsfTransferable = 0x00000008;
+  // NFTokenCreateOffer Flags
+  static const int _tfSellNFToken = 0x00000001;
 
   Future<MintResult> mint({
     required String accountAddress,
@@ -249,6 +253,7 @@ class NftService {
       'Account': accountAddress,
       'NFTokenID': nftId,
       'Destination': destinationAddress,
+      'Flags': _tfSellNFToken,
       'Fee': '10',
     };
     tx['Amount'] = amountDrops ?? '0';
